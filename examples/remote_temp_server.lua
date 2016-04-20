@@ -234,13 +234,15 @@ for syncID = 1,10000 do
 
   AsyncEA.syncServer(params)
 
+  print('Sync #' .. syncID)
   xlua.progress(syncID % 100, 100)
-  epoch = epoch + 1
 
   if syncID % 100 == 0 then -- every 100 syncs test the net
 
+    epoch = epoch + 1
+
     -- Check Training Error
-    print('Training Epoch #'..epoch)
+    print('Training Error Trial #'..epoch)
 
     for i = 1,numTrainingBatches() do
        -- Next sample:
@@ -266,7 +268,7 @@ for syncID = 1,10000 do
     confusionMatrix:zero()
 
     -- Check Test Error
-    print('Testing Epoch #'..epoch)
+    print('Testing Error Trial #' ..epoch)
 
 
     for i = 1,numTestBatches() do
