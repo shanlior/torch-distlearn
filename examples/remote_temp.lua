@@ -4,9 +4,16 @@ Train a CNN classifier on CIFAR-10 using AllReduceSGD.
    --nodeIndex         (default 1)         node index
    --numNodes          (default 1)         num nodes spawned in parallel
    --batchSize         (default 32)        batch size, per node
-   --learningRate      (default .1)        learning rate
+   --learningRate      (default .01)        learning rate
    --cuda                                  use cuda
    --gpu               (default 1)         which gpu to use (only when using cuda)
+   --host              (default '127.0.0.1') host name of the server
+   --port              (default 8080)      port number of the server
+   --base              (default 2)         power of 2 base of the tree of nodes
+   --clientIP          (default '127.0.0.1') host name of the client
+   --server                               Client/Server
+   --verbose                               Print Communication details
+   --communication     (default 10) How many batches between communications?
 ]]
 
 -- Requires
@@ -21,20 +28,59 @@ local util = require 'autograd.util'
 local lossFuns = require 'autograd.loss'
 local optim = require 'optim'
 local Dataset = require 'dataset.Dataset'
+local walkTable = require 'ipc.utils'.walkTable
+local tau = opt.communication
 
+require 'colorPrint' -- Print Server and Client in colors
+if not opt.verbose then
+  function printServer(string) end
+  function printClient(string) end
+end
 -- Build the AllReduce tree
-local tree = require 'ipc.LocalhostTree'(opt.nodeIndex, opt.numNodes)
-local allReduceSGD = require 'distlearn.AllReduceSGD'(tree)
 
--- Print only in instance 1!
-if opt.nodeIndex > 1 then
-   xlua.progress = function() end
-   print = function() end
+local ipc = require 'libipc'
+local Tree = require 'ipc.Tree'
+local client, server
+local serverBroadcast, clientBroadcast
+if opt.server then
+  print('client')
+  serverBroadcast = ipc.server(opt.host, opt.port)
+  serverBroadcast:clients(opt.numNodes, function (client) end)
+  server = {}
+  for i=1,opt.numNodes do
+    client_port = opt.port + i
+    print("Port #".. client_port .." for client #" .. i)
+    server[i] = ipc.server(opt.host, client_port)
+    server[i]:clients(1, function (client) end)
+  end
+else
+  clientBroadcast = ipc.client(opt.host, opt.port)
+  client = ipc.client(opt.host, opt.port + opt.nodeIndex)
+end
+
+-- local tree =  Tree(opt.nodeIndex, opt.numNodes, opt.base, server, client, opt.clientIP, opt.port + opt.nodeIndex)
+-- local tree = Tree()
+
+local AsyncEA = require 'distlearn.AsyncEA'(server, serverBroadcast, client, clientBroadcast, opt.numNodes, opt.nodeIndex,tau, 0.2)
+
+-- Print only in instance 0!
+if not opt.vebose then
+  if opt.nodeIndex > 0 then
+     xlua.progress = function() end
+     print = function() end
+  end
 end
 
 -- Adapt batch size, per node:
-opt.batchSize = math.ceil(opt.batchSize / opt.numNodes)
+-- if not opt.cuda then
+--   print('CPU mode')
+--   opt.batchSize = math.ceil(opt.batchSize / 16)
+-- end
+-- opt.batchSize = math.ceil(opt.batchSize / opt.numNodes)
 print('Batch size: per node = ' .. opt.batchSize .. ', total = ' .. (opt.batchSize*opt.numNodes))
+
+
+
 
 -- Load the CIFAR-10 dataset
 -- trainData = torch.load('/home/ehoffer/Datasets/Cifar10/cifar10-train.t7')
@@ -136,7 +182,6 @@ linear,params[9] = grad.nn.Linear(512*2*2, 10)
 params = grad.util.cast(params, opt.cuda and 'cuda' or 'float')
 
 -- Make sure all the nodes have the same parameter values
-allReduceSGD.synchronizeParameters(params)
 
 -- Loss:
 local logSoftMax = grad.nn.LogSoftMax()
@@ -168,9 +213,12 @@ local df = grad(f, {
    stableGradients = true,       -- Keep the gradient tensors stable so we can use CUDA IPC
 })
 
+
 -- Train a neural network
+AsyncEA.initClient(params)
+
 for epoch = 1,100 do
-   print('Training Epoch #'..epoch)
+  --  print('Training Epoch #'..epoch)
    for i = 1,numTrainingBatches() do
       -- Next sample:
       local batch = getTrainingBatch()
@@ -178,10 +226,14 @@ for epoch = 1,100 do
       local y = batch.target
 
       -- Grads:
+      -- print(opt.nodeIndex .. " Computing")
+
+
       local grads, loss, prediction = df(params,x,y)
 
-      -- Gather the grads from all nodes
-      allReduceSGD.sumAndNormalizeGradients(grads)
+      -- sync with Master
+      AsyncEA.syncClient(params) -- Syncs client with server if needed
+
 
       -- Update weights and biases
       for layer in pairs(params) do
@@ -190,49 +242,6 @@ for epoch = 1,100 do
          end
       end
 
-      -- Log performance:
-      for b = 1,batch.batchSize do
-         confusionMatrix:add(prediction[b], y[b])
-      end
-
-      -- Display progress:
-      xlua.progress(i, numTrainingBatches())
    end
-
-   -- Reduce confusion matrix so all instances share the same:
-   tree.allReduce(confusionMatrix.mat, function(a,b) return a:add(b) end)
-   print(confusionMatrix)
-   confusionMatrix:zero()
-
-   -- Make sure all nodes are in sync at the end of an epoch
-   allReduceSGD.synchronizeParameters(params)
-
-   print('Testing Epoch #'..epoch)
-
-
-   for i = 1,numTestBatches() do
-      -- Next sample:
-      local batch = getTestBatch()
-      local x = batch.input
-      local y = batch.target
-
-      -- Prediction:
-      local loss, prediction = f(params,x,y)
-      -- -- Gather the grads from all nodes
-      -- allReduceSGD.sumAndNormalizeGradients(grads)
-
-      -- Log performance:
-      for b = 1,batch.batchSize do
-         confusionMatrix:add(prediction[b], y[b])
-      end
-
-      -- Display progress:
-      xlua.progress(i, numTestBatches())
-   end
-
-   -- Reduce confusion matrix so all instances share the same:
-   tree.allReduce(confusionMatrix.mat, function(a,b) return a:add(b) end)
-   print(confusionMatrix)
-   confusionMatrix:zero()
 
 end

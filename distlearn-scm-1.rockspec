@@ -22,5 +22,7 @@ build = {
    modules = {
       ['distlearn.AllReduceSGD'] = 'lua/AllReduceSGD.lua',
       ['distlearn.AllReduceEA'] = 'lua/AllReduceEA.lua',
+      ['distlearn.AsyncEA'] = 'lua/AsyncEA.lua',
+      ['colorPrint'] = 'lua/colorPrint.lua'
    },
 }

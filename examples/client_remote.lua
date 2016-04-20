@@ -4,9 +4,13 @@ Train a CNN classifier on CIFAR-10 using AllReduceSGD.
    --nodeIndex         (default 1)         node index
    --numNodes          (default 1)         num nodes spawned in parallel
    --batchSize         (default 32)        batch size, per node
-   --learningRate      (default .1)        learning rate
+   --learningRate      (default .01)        learning rate
    --cuda                                  use cuda
    --gpu               (default 1)         which gpu to use (only when using cuda)
+   --host              (default '127.0.0.1') host name of the server
+   --port              (default 8080)      port number of the server
+   --base              (default 2)         power of 2 base of the tree of nodes
+   --clientIP         (default '127.0.0.1') host name of the client
 ]]
 
 -- Requires
@@ -23,8 +27,20 @@ local optim = require 'optim'
 local Dataset = require 'dataset.Dataset'
 
 -- Build the AllReduce tree
-local tree = require 'ipc.LocalhostTree'(opt.nodeIndex, opt.numNodes)
-local allReduceSGD = require 'distlearn.AllReduceSGD'(tree)
+
+local ipc = require 'libipc'
+local Tree = require 'ipc.Tree'
+local client, server
+if opt.nodeIndex == 1 then
+  server = ipc.server(opt.host, opt.port)
+  server:clients(opt.numNodes - 1, function(client) end)
+else
+  client = ipc.client(opt.host, opt.port)
+end
+
+local tree = Tree(opt.nodeIndex, opt.numNodes, opt.base, server, client, opt.clientIP, opt.port + opt.nodeIndex)
+
+local AsyncEA = require 'distlearn.AsyncEA'(tree, 10, 0.2)
 
 -- Print only in instance 1!
 if opt.nodeIndex > 1 then
@@ -33,6 +49,10 @@ if opt.nodeIndex > 1 then
 end
 
 -- Adapt batch size, per node:
+-- if not opt.cuda then
+--   print('CPU mode')
+--   opt.batchSize = math.ceil(opt.batchSize / 16)
+-- end
 opt.batchSize = math.ceil(opt.batchSize / opt.numNodes)
 print('Batch size: per node = ' .. opt.batchSize .. ', total = ' .. (opt.batchSize*opt.numNodes))
 
@@ -134,9 +154,8 @@ linear,params[9] = grad.nn.Linear(512*2*2, 10)
 
 -- Cast the parameters
 params = grad.util.cast(params, opt.cuda and 'cuda' or 'float')
-
 -- Make sure all the nodes have the same parameter values
-allReduceSGD.synchronizeParameters(params)
+AsyncEA.synchronizeParameters(params)
 
 -- Loss:
 local logSoftMax = grad.nn.LogSoftMax()
@@ -168,6 +187,7 @@ local df = grad(f, {
    stableGradients = true,       -- Keep the gradient tensors stable so we can use CUDA IPC
 })
 
+
 -- Train a neural network
 for epoch = 1,100 do
    print('Training Epoch #'..epoch)
@@ -180,15 +200,15 @@ for epoch = 1,100 do
       -- Grads:
       local grads, loss, prediction = df(params,x,y)
 
-      -- Gather the grads from all nodes
-      allReduceSGD.sumAndNormalizeGradients(grads)
-
       -- Update weights and biases
       for layer in pairs(params) do
          for i in pairs(params[layer]) do
             params[layer][i]:add(-opt.learningRate, grads[layer][i])
          end
       end
+      -- Average the parameters
+      AsyncEA.averageParameters(params)
+
 
       -- Log performance:
       for b = 1,batch.batchSize do
@@ -205,7 +225,7 @@ for epoch = 1,100 do
    confusionMatrix:zero()
 
    -- Make sure all nodes are in sync at the end of an epoch
-   allReduceSGD.synchronizeParameters(params)
+   AsyncEA.synchronizeCenter(params)
 
    print('Testing Epoch #'..epoch)
 
