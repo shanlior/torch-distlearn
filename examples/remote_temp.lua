@@ -22,7 +22,7 @@ if opt.cuda then
    require 'cunn'
    cutorch.setDevice(opt.gpu)
 end
--- luarocks install autograd
+
 local grad = require 'autograd'
 local util = require 'autograd.util'
 local lossFuns = require 'autograd.loss'
@@ -36,8 +36,9 @@ if not opt.verbose then
   function printServer(string) end
   function printClient(string) end
 end
--- Build the AllReduce tree
 
+
+-- Build the Network
 local ipc = require 'libipc'
 local Tree = require 'ipc.Tree'
 local client, server
@@ -58,39 +59,27 @@ else
   client = ipc.client(opt.host, opt.port + opt.nodeIndex)
 end
 
--- local tree =  Tree(opt.nodeIndex, opt.numNodes, opt.base, server, client, opt.clientIP, opt.port + opt.nodeIndex)
--- local tree = Tree()
-
 local AsyncEA = require 'distlearn.AsyncEA'(server, serverBroadcast, client, clientBroadcast, opt.numNodes, opt.nodeIndex,tau, 0.2)
 
 -- Print only in instance 0!
-if not opt.vebose then
+if not opt.verbose then
   if opt.nodeIndex > 0 then
      xlua.progress = function() end
      print = function() end
   end
 end
 
--- Adapt batch size, per node:
--- if not opt.cuda then
---   print('CPU mode')
---   opt.batchSize = math.ceil(opt.batchSize / 16)
--- end
--- opt.batchSize = math.ceil(opt.batchSize / opt.numNodes)
-print('Batch size: per node = ' .. opt.batchSize .. ', total = ' .. (opt.batchSize*opt.numNodes))
-
-
-
 
 -- Load the CIFAR-10 dataset
--- trainData = torch.load('/home/ehoffer/Datasets/Cifar10/cifar10-train.t7')
-local trainingDataset = Dataset('/home/lior/Datasets/Cifar10/cifar10-train-twitter.t7', {
+local lfs = require 'lfs'
+dirPrefix = string.match(lfs.currentdir(),"/%a+/%a+/")
+local trainingDataset = Dataset(dirPrefix .. 'Datasets/Cifar10/cifar10-train-twitter.t7', {
    -- Partition dataset so each node sees a subset:
    partition = opt.nodeIndex,
    partitions = opt.numNodes,
 })
 
-local testDataset = Dataset('/home/lior/Datasets/Cifar10/cifar10-test-twitter.t7', {
+local testDataset = Dataset(dirPrefix .. 'Datasets/Cifar10/cifar10-test-twitter.t7', {
    -- Partition dataset so each node sees a subset:
    partition = opt.nodeIndex,
    partitions = opt.numNodes,

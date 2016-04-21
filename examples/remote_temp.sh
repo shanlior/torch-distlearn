@@ -26,9 +26,9 @@ done
 # OMP_NUM_THREADS=4 th remote_temp_server.lua --server 1 --numNodes 1 --nodeIndex 0 --batchSize 128 --port $port --verbose 0 &
 # th remote_temp.lua --numNodes 1 --nodeIndex 1 --batchSize 128 --cuda --gpu 1 --port $port --verbose 0 &
 
-th remote_temp_server.lua  --cuda --gpu 1 --server 1 --numNodes 2 --nodeIndex 0 --batchSize 128 --port $port --save testNet &
-th remote_temp.lua --cuda --gpu 1 --numNodes 2 --nodeIndex 1 --batchSize 128 --port $port &
-OMP_NUM_THREADS=4 th remote_temp.lua --numNodes 2 --nodeIndex 2 --batchSize 128 --port $port &
+# th remote_temp_server.lua  --cuda --gpu 1 --server 1 --numNodes 2 --nodeIndex 0 --batchSize 128 --port $port --save testNet &
+# th remote_temp.lua --cuda --gpu 1 --numNodes 2 --nodeIndex 1 --batchSize 128 --port $port &
+th remote_temp.lua --cuda --gpu 1 --numNodes 4 --nodeIndex 4 --batchSize 128 --port $port --host 10.185.36.35 &
 
 
 

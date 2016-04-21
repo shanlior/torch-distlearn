@@ -4,6 +4,7 @@ Train a CNN classifier on CIFAR-10 using AllReduceSGD.
    --nodeIndex         (default 1)         node index
    --numNodes          (default 1)         num nodes spawned in parallel
    --batchSize         (default 32)        batch size, per node
+   --numEpochs         (default inf)       Total Number of epochs
    --learningRate      (default .01)        learning rate
    --cuda                                  use cuda
    --gpu               (default 1)         which gpu to use (only when using cuda)
@@ -25,7 +26,6 @@ if opt.cuda then
    require 'cunn'
    cutorch.setDevice(opt.gpu)
 end
--- luarocks install autograd
 local grad = require 'autograd'
 local util = require 'autograd.util'
 local lossFuns = require 'autograd.loss'
@@ -47,13 +47,13 @@ local Log = optim.Logger(logFilename)
 
 
 require 'colorPrint' -- Print Server and Client in colors
+-- if not verbose
 if not opt.verbose then
   function printServer(string) end
   function printClient(string) end
 end
--- Build the AllReduce tree
 
-
+-- Build the Network
 local ipc = require 'libipc'
 local Tree = require 'ipc.Tree'
 local client, server
@@ -72,7 +72,6 @@ else
   clientBroadcast = ipc.client(opt.host, opt.port)
   client = ipc.client(opt.host, opt.port + opt.nodeIndex)
 end
--- local tree =  Tree(opt.nodeIndex, opt.numNodes, opt.base, server, client, opt.clientIP, opt.port + opt.nodeIndex)
 
 local AsyncEA = require 'distlearn.AsyncEA'(server, serverBroadcast, client, clientBroadcast,opt.numNodes, 1,10, 0.2)
 
@@ -82,30 +81,11 @@ if not opt.server then
    print = function() end
 end
 
--- Adapt batch size, per node:
--- if not opt.cuda then
---   print('CPU mode')
---   opt.batchSize = math.ceil(opt.batchSize / 16)
--- end
--- opt.batchSize = math.ceil(opt.batchSize / opt.numNodes)
-printServer('Batch size: per node = ' .. opt.batchSize .. ', total = ' .. (opt.batchSize*opt.numNodes))
-
-
-
-
 -- Load the CIFAR-10 dataset
--- trainData = torch.load('/home/ehoffer/Datasets/Cifar10/cifar10-train.t7')
-local trainingDataset = Dataset('/home/lior/Datasets/Cifar10/cifar10-train-twitter.t7', {
-   -- Partition dataset so each node sees a subset:
-   partition = 1,
-   partitions = opt.numNodes,
-})
-
-local testDataset = Dataset('/home/lior/Datasets/Cifar10/cifar10-test-twitter.t7', {
-   -- Partition dataset so each node sees a subset:
-   partition = 1,
-   partitions = opt.numNodes,
-})
+local lfs = require 'lfs'
+dirPrefix = string.match(lfs.currentdir(),"/%a+/%a+/")
+local trainingDataset = Dataset(dirPrefix .. 'Datasets/Cifar10/cifar10-train-twitter.t7')
+local testDataset = Dataset(dirPrefix .. 'Datasets/Cifar10/cifar10-test-twitter.t7')
 
 local getTrainingBatch, numTrainingBatches = trainingDataset.sampledBatcher({
    samplerKind = 'label-uniform',
@@ -230,11 +210,10 @@ AsyncEA.initServer(params)
 
 local epoch = 0
 -- Train a neural network
-for syncID = 1,10000 do
+for syncID = 1,numEpochs*opt.batchSize do
 
   AsyncEA.syncServer(params)
 
-  print('Sync #' .. syncID)
   xlua.progress(syncID % 100, 100)
 
   if syncID % 100 == 0 then -- every 100 syncs test the net
@@ -242,7 +221,7 @@ for syncID = 1,10000 do
     epoch = epoch + 1
 
     -- Check Training Error
-    print('Training Error Trial #'..epoch)
+    print('\nTraining Error Trial #'..epoch .. '\n')
 
     for i = 1,numTrainingBatches() do
        -- Next sample:
@@ -268,7 +247,7 @@ for syncID = 1,10000 do
     confusionMatrix:zero()
 
     -- Check Test Error
-    print('Testing Error Trial #' ..epoch)
+    print('\nTesting Error Trial #' ..epoch .. '\n')
 
 
     for i = 1,numTestBatches() do
@@ -293,7 +272,7 @@ for syncID = 1,10000 do
 
     print(confusionMatrix)
     local ErrTest = (1-confusionMatrix.totalValid)
-    print('Test Error = ' .. ErrTest)
+    print('Test Error = ' .. ErrTest .. '\n')
     confusionMatrix:zero()
 
     Log:add{['Training Error']= ErrTrain, ['Test Error'] = ErrTest}
