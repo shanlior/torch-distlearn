@@ -210,7 +210,11 @@ AsyncEA.initServer(params)
 
 local epoch = 0
 -- Train a neural network
-for syncID = 1,numEpochs*opt.batchSize do
+if opt.numEpochs == 'inf' then
+  opt.numEpochs = 1/0
+end
+
+for syncID = 1,opt.numEpochs*opt.batchSize do
 
   AsyncEA.syncServer(params)
 
