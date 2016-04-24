@@ -28,15 +28,16 @@ done
 
 #################################################
 
+serverip=`ifconfig | awk '/inet addr/{print substr($2,6)}' | head -1`
 
 
-th EASGD_server.lua --server --cuda --gpu 1 --numNodes $numNodes --numEpochs 50 --nodeIndex 0 --batchSize 128 --port $port --save testNet --host cnn-1404-titanx &
-th EASGD_client.lua --cuda --gpu 1 --numNodes $numNodes --nodeIndex 1 --batchSize 128 --port $port --host cnn-1404-titanx &
-th EASGD_client.lua --cuda --gpu 2 --numNodes $numNodes --nodeIndex 2 --batchSize 128 --port $port --host cnn-1404-titanx &
-# OMP_NUM_THREADS=28 th remote_temp.lua --numNodes $numNodes --nodeIndex 3 --batchSize 128 --port $port --host cnn-1404-titanx &
+th EASGD_server.lua --server --cuda --gpu 1 --numNodes $numNodes --numEpochs 50 --nodeIndex 0 --batchSize 128 --port $port --save testNet --host $serverip &
+th EASGD_client.lua --cuda --gpu 1 --numNodes $numNodes --nodeIndex 1 --batchSize 128 --port $port --host $serverip &
+th EASGD_client.lua --cuda --gpu 2 --numNodes $numNodes --nodeIndex 2 --batchSize 128 --port $port --host $serverip &
+# OMP_NUM_THREADS=28 th remote_temp.lua --numNodes $numNodes --nodeIndex 3 --batchSize 128 --port $port --host $serverip &
 
 # run on a remote client
-ssh -n -f lior@icri-lior "sh -c 'cd /home/lior/Playground/Torch/torch-distlearn/examples ; nohup /home/lior/torch/install/bin/th EASGD_client.lua --cuda --gpu 1 --numNodes $numNodes --nodeIndex 3 --batchSize 128 --port $port --host cnn-1404-titanx > /dev/null 2>&1 &'"
+ssh -n -f lior@icri-lior "sh -c 'cd /home/lior/Playground/Torch/torch-distlearn/examples ; nohup /home/lior/torch/install/bin/th EASGD_client.lua --cuda --gpu 1 --numNodes $numNodes --nodeIndex 3 --batchSize 128 --port $port --host $serverip > /dev/null 2>&1 &'"
 
 # run on a remote client-script example
 # ssh -n -f lior@icri-lior "sh -c 'cd /home/lior/Playground/Torch/torch-distlearn/examples ; nohup ./remote_temp.sh $port > /dev/null 2>&1 &'"
