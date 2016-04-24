@@ -208,7 +208,9 @@ local df = grad(f, {
 
 AsyncEA.initServer(params)
 
-local epoch = 0
+local epoch = 1
+
+print('Training #' .. epoch)
 -- Train a neural network
 if opt.numEpochs == 'inf' then
   opt.numEpochs = 1/0
@@ -221,8 +223,6 @@ for syncID = 1,opt.numEpochs*opt.batchSize do
   xlua.progress(syncID % 100, 100)
 
   if syncID % 100 == 0 then -- every 100 syncs test the net
-
-    epoch = epoch + 1
 
     -- Check Training Error
     print('\nTraining Error Trial #'..epoch .. '\n')
@@ -284,6 +284,11 @@ for syncID = 1,opt.numEpochs*opt.batchSize do
         Log:style{['Training Error'] = '-', ['Test Error'] = '-'}
         Log:plot()
     end
+
+    epoch = epoch + 1
+
+    print('Training #' .. epoch .. '\n')
+
 
   end
 end
