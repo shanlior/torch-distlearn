@@ -3,7 +3,7 @@ local ipc = require 'libipc'
 local walkTable = require 'ipc.utils'.walkTable
 
 
-local function AsyncEA(server, serverBroadcast, client, clientBroadcast,numNodes, node, tau, alpha)
+local function AsyncEA(server, serverBroadcast, client, clientBroadcast, serverTest, clientTest, numNodes, node, tau, alpha)
 
   -- Keep track of how many steps each node does per epoch
   local step = 0
@@ -46,21 +46,17 @@ local function AsyncEA(server, serverBroadcast, client, clientBroadcast,numNodes
   end
 
 
-
-
   local function isSyncNeeded()
 
     step = step + 1
 
-    if step % 10 == 0 then
+    if step % tau == 0 then
       return true
     end
 
     return false
 
   end
-
-
 
 
   ----------- Client Functions ------------
@@ -240,11 +236,70 @@ local function AsyncEA(server, serverBroadcast, client, clientBroadcast,numNodes
 
   end
 
+  local function testNet()
+
+    local function serverHandler(client)
+
+      client:send("Test?")
+      local msg = client:recv()
+      assert(msg == "Center?")
+
+      walkTable(center, function(valuei)
+        client:send(valuei)
+      end)
+
+      msg = client:recv()
+      assert(msg == "Ack")
+
+    end
+
+    serverTest:clients(1, serverHandler)
+
+  end
+
+  ----------- Tester Functions ------------
+  local function initTester(params)
+  -- initialize tester parameters
+    oneTimeInit(params)
+
+  end
+
+
+  local function startTest(params)
+    -- Ask server for the center variable and receive it
+
+    local msg = clientTest:recv()
+    assert(msg == "Test?")
+
+    clientTest:send("Center?")
+
+    walkTable(center, function(valuei)
+      return clientTest:recv(valuei)
+    end)
+    local i = 1
+    walkTable(params, function(param)
+      param:copy(center[i])
+      i = i + 1
+    end)
+
+  end
+
+  local function finishTest()
+    -- Ask server for the center variable and receive it
+
+    clientTest:send("Ack")
+
+  end
+
 return {
   initServer = initServer,
   initClient = initClient,
+  initTester = initTester,
   syncClient = syncClient,
-  syncServer = syncServer
+  syncServer = syncServer,
+  testNet = testNet,
+  startTest = startTest,
+  finishTest = finishTest
 }
 end
 
