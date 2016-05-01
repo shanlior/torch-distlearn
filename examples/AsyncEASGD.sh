@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # run 4 nodes
-numNodes=3
+numNodes=5
 
 #################################################
 # Try to close the ports if they are already used
@@ -29,6 +29,7 @@ done
 #################################################
 
 serverip=`ifconfig | awk '/inet addr/{print substr($2,6)}' | head -1`
+echo Current server is located at ip: $serverip
 
 
 th EASGD_server.lua --server --cuda --gpu 1 --numNodes $numNodes --numEpochs 50 --nodeIndex 0 --batchSize 128 --port $port --save testNet --host $serverip &
@@ -38,6 +39,9 @@ th EASGD_client.lua --cuda --gpu 2 --numNodes $numNodes --nodeIndex 2 --batchSiz
 
 # run on a remote client
 ssh -n -f lior@icri-lior "sh -c 'cd /home/lior/Playground/Torch/torch-distlearn/examples ; nohup /home/lior/torch/install/bin/th EASGD_client.lua --cuda --gpu 1 --numNodes $numNodes --nodeIndex 3 --batchSize 128 --port $port --host $serverip > /dev/null 2>&1 &'"
+ssh -n -f ehoffer@cnn2-linux14 "sh -c 'cd /home/ehoffer/Playground/torch-distlearn/examples ; nohup /home/ehoffer/torch/install/bin/th EASGD_client.lua --cuda --gpu 1 --numNodes $numNodes --nodeIndex 4 --batchSize 128 --port $port --host $serverip > /dev/null 2>&1 &'"
+ssh -n -f shai@shaiPC "sh -c 'cd /home/shai/Playground/torch-distlearn/examples ; nohup /home/shai/torch/install/bin/th EASGD_client.lua --cuda --gpu 1 --numNodes $numNodes --nodeIndex 5 --batchSize 128 --port $port --host $serverip > /dev/null 2>&1 &'"
+
 
 # run on a remote client-script example
 # ssh -n -f lior@icri-lior "sh -c 'cd /home/lior/Playground/Torch/torch-distlearn/examples ; nohup ./remote_temp.sh $port > /dev/null 2>&1 &'"
