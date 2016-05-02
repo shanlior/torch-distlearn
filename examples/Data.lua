@@ -2,21 +2,21 @@ local Dataset = require 'dataset.Dataset'
 
 -- Load the CIFAR-10 dataset
 
-local function Data(partitionPart, totalPartitions, batchSize, cuda)
+local function Data(partitionNum, partitions, batchSize, cuda)
 
   local lfs = require 'lfs'
   dirPrefix = string.match(lfs.currentdir(),"/%a+/%a+/")
 
   local trainingDataset = Dataset(dirPrefix .. 'Datasets/Cifar10/cifar10-train-twitter.t7', {
      -- Partition dataset so each node sees a subset:
-     partition = partitionPart,
-     partitions = totalPartitions
+     partition = partitionNum,
+     partitions = partitions
   })
 
   local testDataset = Dataset(dirPrefix .. 'Datasets/Cifar10/cifar10-test-twitter.t7', {
      -- Partition dataset so each node sees a subset:
-     partition = partitionPart,
-     partitions = totalPartitions
+     partition = partitionNum,
+     partitions = partitions
   })
 
   local getTrainingBatch, numTrainingBatches = trainingDataset.sampledBatcher({
